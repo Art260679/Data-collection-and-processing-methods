@@ -1,0 +1,92 @@
+from pprint import pprint
+import requests
+from bs4 import BeautifulSoup as bs
+import pandas as pd
+import numpy as np
+import re 
+
+
+search = input('Введите название профессии: ')
+
+number = int(input('Введите количество страниц c которых необходимо собрать информацию: '))
+
+i = 0
+
+vacancies = pd.DataFrame()
+
+while i is not number:
+     
+    main_link = 'https://hh.ru/search/vacancy?L_is_autosearch=false&area=1&clusters=true&enable_snippets=true&no_magic=true&text=python&page='+ str(i)
+
+    header = {'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Safari/537.36',
+          'Accept':'*/*'}
+    params = {'st':'searchVacancy', 'keywords':search}
+
+    response = requests.get(main_link,headers=header,params=params).text
+
+    dom = bs(response,'lxml')
+
+    vacancy_list = dom.find_all('div',{'class':'vacancy-serp-item__row vacancy-serp-item__row_header'})
+
+    for vacancy in vacancy_list:
+        vacancy_data = pd.DataFrame()
+        
+    # name 
+        vacancy_name = pd.Series(vacancy.find('a',{'class':'bloko-link HH-LinkModifier'}).getText())
+        vacancy_data['name'] = vacancy_name
+    
+        vacancy_salary= vacancy.find('span',{'data-qa':'vacancy-serp__vacancy-compensation'})
+    
+    #currency
+        if vacancy_salary is None :
+            vacancy_data['currency'] = None
+        else:
+            currency = re.findall('руб|USD|EUR', str(vacancy_salary))
+            vacancy_data['currency'] = str(currency)[2:-2]
+        
+    # salary_min   
+        if vacancy_salary is None :
+            vacancy_data['salary_min'] = None
+        else:
+            vacancy_salary_min = re.sub(r'\s', "", str(vacancy_salary)) # убираем пробелы
+            vacancy_salary_min1 = re.findall('от(\d+)', vacancy_salary_min) or \
+            re.findall('(\d+)-', vacancy_salary_min)
+            vacancy_data['salary_min'] = str(vacancy_salary_min1)[2:-2] 
+            
+         
+            
+        
+      # salary_max   
+        if vacancy_salary is None :
+            vacancy_data['salary_max'] = None
+        else:
+            vacancy_salary_max = re.sub(r'\s', "", str(vacancy_salary)) # убираем пробелы
+            vacancy_salary_max1 = re.findall('до(\d+)', vacancy_salary_max) or \
+            re.findall('\d-(\d+)\w', vacancy_salary_max)
+            vacancy_data['salary_max'] = str(vacancy_salary_max1)[2:-2] 
+            
+        
+        
+        
+       # link_to_the_job 
+        vacancy_link =vacancy.find('a',{'class':'bloko-link HH-LinkModifier'})['href']                             
+        vacancy_data['link to the job '] = vacancy_link
+        vacancy_data ['The site where the job was created']= 'hh.ru'
+    
+    
+        vacancies = vacancies.append(vacancy_data)
+    
+    i += 1
+    
+    # button 
+    try:
+        button = dom.find('a',{'class':'bloko-button HH-Pager-Controls-Next HH-Pager-Control'})['href'] 
+    except TypeError:
+        break
+        
+vacancies.index = np.arange(1,(len(vacancies) + 1))  #  переназначаем индексы
+vacancies.loc[vacancies['salary_min'] < '1', 'salary_min'] = None
+vacancies.loc[vacancies['salary_max'] < '1', 'salary_max'] = None
+
+
+vacancies
