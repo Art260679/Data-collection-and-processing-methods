@@ -8,14 +8,11 @@
 import scrapy
 
 
-class InstagramItem(scrapy.Item):
+class InstaparserItem(scrapy.Item):
     # define the fields for your item here like:
     _id = scrapy.Field()
-    followers_of = scrapy.Field()
-    followed_by = scrapy.Field()
-    name = scrapy.Field()
-    id = scrapy.Field()
     username = scrapy.Field()
-    fullname = scrapy.Field()
-    pic_url = scrapy.Field()
-    status = scrapy.Field()
+    full_name = scrapy.Field()
+    is_private = scrapy.Field()
+    profile_pic_url = scrapy.Field()
+    type_user = scrapy.Field()

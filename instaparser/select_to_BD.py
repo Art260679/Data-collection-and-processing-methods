@@ -5,8 +5,8 @@ client = MongoClient('localhost', 27017)
 db = client['instadb']
 collection = db.instagram
 
-for user in collection.find({'$and': [{'name': 'go_chatbot', 'status': 'followers'}]}):
+for user in collection.find({'$and': [{'name': 'go_chatbot', 'status': 'follow_id'}]}):
     pprint(user)
 
-for user in collection.find({'$and': [{'name': 'go_chatbot', 'status': 'followed_by'}]}):
+for user in collection.find({'$and': [{'name': 'go_chatbot', 'status': 'follower_id'}]}):
     pprint(user)

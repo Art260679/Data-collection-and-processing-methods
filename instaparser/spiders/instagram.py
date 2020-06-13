@@ -5,19 +5,13 @@ import json
 from scrapy.http import HtmlResponse
 from urllib.parse import urlencode
 from copy import deepcopy
-from instaparser.items import InstagramItem
+from instaparser.items import InstaparserItem
+from scrapy.loader import ItemLoader
 
 
 def fetch_csrf_token(text):
     matched = re.search('\"csrf_token\":\"\\w+\"', text).group()
     return matched.split(':').pop().replace(r'"', '')
-
-
-def fetch_user_id(text, username):
-    matched = re.search(
-        '{\"id\":\"\\d+\",\"username\":\"%s\"}' % username, text
-    ).group()
-    return json.loads(matched).get('id')
 
 
 class InstagramSpider(scrapy.Spider):
@@ -28,114 +22,101 @@ class InstagramSpider(scrapy.Spider):
     insta_pass = "#PWD_INSTAGRAM_BROWSER:10:1591722117:AUBQADIcrhyTHgb0+N/xydK3nvVQRQ4AY1m5x2bW44r1NCZjBPMiaISNA3VnmJkZYQcB1eURLEFG9lchtB60F3qEQ+NpAQDxceZ5ugkqkPouwVS3M5tB2qiZXvwwPrcyvDSS7J74r8S5EoYaua0="
     inst_login_link = 'https://instagram.com/accounts/login/ajax/'
 
-    hash_followers = '7c8a1055f69ff97dc201e752cf6f0093'
+    hash_followers = 'c76146de99bb02f6415203be841dd25a'
     hash_following = 'd04b0a864b4b54837c0d870b0e77e076'
     graphql_link = 'https://www.instagram.com/graphql/query/?'
 
-    def __init__(self, parser_user):
-        self.parser_user = parser_user
+    def __init__(self, users):
+        self.users_list = users
 
     def parse(self, response):
         csrf_token = fetch_csrf_token(response.text)
         yield scrapy.FormRequest(
             self.inst_login_link,
             method='POST',
-            callback=self.authenticated_user,
-            formdata={
-                'username': self.insta_login,
-                'enc_password': self.insta_pass
-            },
+            callback=self.parse_user,
+            formdata={'username': self.insta_login,
+                      'enc_password': self.insta_pass},
             headers={'X-CSRFToken': csrf_token}
         )
 
-    def authenticated_user(self, response):
+    def parse_user(self, response):
         j_body = json.loads(response.text)
         if j_body['authenticated']:
-            for user in self.parser_user:
+            for user in self.users_list:
                 yield response.follow(
                     f'/{user}',
-                    callback=self.data_user,
-                    cb_kwargs={'user': user}
+                    callback=self.user_data_parse
                 )
 
-    def data_user(self, response: HtmlResponse, user):
-        user_id = fetch_user_id(response.text, user)
-        variables = {"id": user_id,
+    def user_data_parse(self, response: HtmlResponse):
+        user_parser = response.xpath("//script[contains(text(), 'csrf_token')]").extract_first()[52:-10]
+        user_parser = json.loads(user_parser)['entry_data']['ProfilePage'][0]['graphql']['user']
+
+        variables = {"id": user_parser['id'],
                      "first": 50
                      }
+
         url_followers = f'{self.graphql_link}query_hash={self.hash_followers}&{urlencode(variables)}'
+
         yield response.follow(
             url_followers,
-            callback=self.followers_parse,
-            cb_kwargs={'user_id': user_id,
-                       'variables': deepcopy(variables)
-                       }
+            callback=self.subscribers_parse,
+            cb_kwargs={'variables': deepcopy(variables)}
         )
 
-        url_following = f'{self.graphql_link}query_hash={self.hash_following}&{urlencode(variables)}'
-        yield response.follow(
-            url_following,
-            callback=self.following_parse,
-            cb_kwargs={'user_id': user_id,
-                       'variables': deepcopy(variables)
-                       }
 
-        )
-
-    def followers_parse(self, response, user_id, variables):
+    def subscribers_parse(self, response, variables):
         j_body = json.loads(response.text)
-        page_info = j_body.get('data').get('user').get('edge_followed_by').get('page_info')
-        if page_info['has_next_page']:
-            variables['after'] = page_info['end_cursor']
-
-            url_followers = f'{self.graphql_link}query_hash={self.hash_followers}&{urlencode(variables)}'
-
-            yield response.follow(
-                url_followers,
-                callback=self.followers_parse,
-                cb_kwargs={'user_id': user_id,
-                           'variables': deepcopy(variables)}
-            )
-
-        followers = j_body.get('data').get('user').get('edge_followed_by').get('edges')
+        next_page_subscribers = j_body['data']['user']['edge_followed_by']['page_info']
+        followers = j_body['data']['user']['edge_followed_by']['edges']
         for follower in followers:
-            item = InstagramItem(
-                followers_of=user_id,
-                name=self.parser_user,
-                id=follower['node']['id'],
-                username=follower['node']['username'],
-                fullname=follower['node']['full_name'],
-                pic_url=follower['node']['profile_pic_url'],
-                status='followers'
-            )
+            loader = ItemLoader(item=InstaparserItem(), context=follower)
+            loader.add_value('_id', f"{'subscribers'}_{follower['node']['id']}")
+            loader.add_value('username', follower['node']['username'])
+            loader.add_value('full_name', follower['node']['full_name'])
+            loader.add_value('is_private', follower['node']['is_private'])
+            loader.add_value('profile_pic_url', follower['node']['profile_pic_url'])
+            loader.add_value('type_user', 'subscribers')
+            yield loader.load_item()
 
-            yield item
+            if next_page_subscribers.get('has_next_page'):
+                variables['after'] = next_page_subscribers['end_cursor']
 
-    def following_parse(self, response, user_id, variables):
+                url_posts = f'{self.graphql_link}query_hash={self.hash_followers}&{urlencode(variables)}'
+                yield response.follow(
+                    url_posts,
+                    callback=self.subscribers_parse,
+                    cb_kwargs={'variables': deepcopy(variables)}
+                )
+            else:
+                url_posts = f'{self.graphql_link}query_hash={self.hash_following}&{urlencode(variables)}'
+                yield response.follow(
+                    url_posts,
+                    callback=self.subscriptions_parse,
+                    cb_kwargs={'variables': deepcopy(variables)}
+                )
+
+    def subscriptions_parse(self, response, variables):
         j_body = json.loads(response.text)
-        page_info = j_body.get('data').get('user').get('edge_follow').get('page_info')
-        if page_info['has_next_page']:
-            variables['after'] = page_info['end_cursor']
+        next_page = j_body['data']['user']['edge_follow']['page_info']
+        followings = j_body['data']['user']['edge_follow']['edges']
+        for following in followings:
+            loader = ItemLoader(item=InstaparserItem(), response=response)
+            loader.add_value('_id', f"{'subscriptions'}_{following['node']['id']}")
+            loader.add_value('username', following['node']['username'])
+            loader.add_value('full_name', following['node']['full_name'])
+            loader.add_value('is_private', following['node']['is_private'])
+            loader.add_value('profile_pic_url', following['node']['profile_pic_url'])
+            loader.add_value('type_user', 'subscriptions')
+            yield loader.load_item()
 
-            url_following = f'{self.graphql_link}query_hash={self.hash_following}&{urlencode(variables)}'
+            if next_page.get('has_next_page'):
+                variables['after'] = next_page['end_cursor']
 
-            yield response.follow(
-                url_following,
-                callback=self.following_parse,
-                cb_kwargs={'user_id': user_id,
-                           'variables': deepcopy(variables)}
-            )
-
-        followers = j_body.get('data').get('user').get('edge_follow').get('edges')
-        for follower in followers:
-            item = InstagramItem(
-                followed_by=user_id,
-                name=self.parser_user,
-                id=follower['node']['id'],
-                username=follower['node']['username'],
-                fullname=follower['node']['full_name'],
-                pic_url=follower['node']['profile_pic_url'],
-                status='followed_by'
-            )
-
-            yield item
+                url_posts = f'{self.graphql_link}query_hash={self.hash_following}&{urlencode(variables)}'
+                yield response.follow(
+                    url_posts,
+                    callback=self.subscribers_parse,
+                    cb_kwargs={'variables': deepcopy(variables)}
+                )

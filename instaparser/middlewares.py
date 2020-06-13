@@ -6,9 +6,39 @@
 # https://docs.scrapy.org/en/latest/topics/spider-middleware.html
 
 from scrapy import signals
+import time
+
+from scrapy.utils.response import response_status_message
+from scrapy.downloadermiddlewares.retry import RetryMiddleware
 
 
-class InstagramSpiderMiddleware:
+class TooManyRequestsRetryMiddleware(RetryMiddleware):
+
+    def __init__(self, crawler):
+        super(TooManyRequestsRetryMiddleware, self).__init__(crawler.settings)
+        self.crawler = crawler
+
+    @classmethod
+    def from_crawler(cls, crawler):
+        return cls(crawler)
+
+    def process_response(self, request, response, spider):
+        if request.meta.get('dont_retry', False):
+            return response
+        elif response.status == 429:
+            self.crawler.engine.pause()
+            spider.logger.info(f'{spider.name} - status 429 - pause')
+            time.sleep(3300)
+            self.crawler.engine.unpause()
+            reason = response_status_message(response.status)
+            return self._retry(request, reason, spider) or response
+        elif response.status in self.retry_http_codes:
+            reason = response_status_message(response.status)
+            return self._retry(request, reason, spider) or response
+        return response
+
+
+class InstaparserSpiderMiddleware:
     # Not all methods need to be defined. If a method is not defined,
     # scrapy acts as if the spider middleware does not modify the
     # passed objects.
@@ -56,7 +86,7 @@ class InstagramSpiderMiddleware:
         spider.logger.info('Spider opened: %s' % spider.name)
 
 
-class InstagramDownloaderMiddleware:
+class InstaparserDownloaderMiddleware:
     # Not all methods need to be defined. If a method is not defined,
     # scrapy acts as if the downloader middleware does not modify the
     # passed objects.
