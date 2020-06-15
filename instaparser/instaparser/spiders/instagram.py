@@ -26,6 +26,8 @@ class InstagramSpider(scrapy.Spider):
     hash_following = 'd04b0a864b4b54837c0d870b0e77e076'
     graphql_link = 'https://www.instagram.com/graphql/query/?'
 
+    collection = None  # for the name of the collection
+
     def __init__(self, users):
         self.users_list = users
 
@@ -44,6 +46,7 @@ class InstagramSpider(scrapy.Spider):
         j_body = json.loads(response.text)
         if j_body['authenticated']:
             for user in self.users_list:
+                self.collection = user
                 yield response.follow(
                     f'/{user}',
                     callback=self.user_data_parse
@@ -71,8 +74,8 @@ class InstagramSpider(scrapy.Spider):
         next_page_subscribers = j_body['data']['user']['edge_followed_by']['page_info']
         followers = j_body['data']['user']['edge_followed_by']['edges']
         for follower in followers:
-            loader = ItemLoader(item=InstaparserItem(), context=follower)
-            loader.add_value('_id', f"{'subscribers'}_{follower['node']['id']}")
+            loader = ItemLoader(item=InstaparserItem())
+            loader.add_value('_id', follower['node']['id'])
             loader.add_value('username', follower['node']['username'])
             loader.add_value('full_name', follower['node']['full_name'])
             loader.add_value('is_private', follower['node']['is_private'])
@@ -102,8 +105,8 @@ class InstagramSpider(scrapy.Spider):
         next_page = j_body['data']['user']['edge_follow']['page_info']
         followings = j_body['data']['user']['edge_follow']['edges']
         for following in followings:
-            loader = ItemLoader(item=InstaparserItem(), response=response)
-            loader.add_value('_id', f"{'subscriptions'}_{following['node']['id']}")
+            loader = ItemLoader(item=InstaparserItem())
+            loader.add_value('_id', following['node']['id'])
             loader.add_value('username', following['node']['username'])
             loader.add_value('full_name', following['node']['full_name'])
             loader.add_value('is_private', following['node']['is_private'])

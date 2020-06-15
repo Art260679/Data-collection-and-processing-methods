@@ -46,9 +46,9 @@ DOWNLOAD_DELAY = 2
 
 # Enable or disable spider middlewares
 # See https://docs.scrapy.org/en/latest/topics/spider-middleware.html
-#SPIDER_MIDDLEWARES = {
-#    'instaparser.middlewares.InstaparserSpiderMiddleware': 543,
-#}
+SPIDER_MIDDLEWARES = {
+    'instaparser.middlewares.InstaparserSpiderMiddleware': 543,
+}
 
 # Enable or disable downloader middlewares
 # See https://docs.scrapy.org/en/latest/topics/downloader-middleware.html
@@ -64,9 +64,9 @@ DOWNLOAD_DELAY = 2
 
 # Configure item pipelines
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
-#ITEM_PIPELINES = {
-#    'instaparser.pipelines.InstaparserPipeline': 300,
-#}
+ITEM_PIPELINES = {
+    'instaparser.pipelines.InstaparserPipeline': 300,
+}
 
 # Enable and configure the AutoThrottle extension (disabled by default)
 # See https://docs.scrapy.org/en/latest/topics/autothrottle.html

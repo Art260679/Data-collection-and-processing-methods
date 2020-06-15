@@ -7,8 +7,6 @@ class InstaparserPipeline:
         self.mongo_base = client.instadb
 
     def process_item(self, item, spider):
-        collection = self.mongo_base[spider.name]
+        collection = self.mongo_base[spider.collection]
         collection.update({'_id': item['_id']}, item, True)
         return item
-
-
